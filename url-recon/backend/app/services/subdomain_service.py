@@ -21,7 +21,7 @@ WORDLIST = [
     "files", "download", "uploads", "s3", "storage", "intranet", "internal",
 ]
 
-BATCH_SIZE = 20
+DNS_CONCURRENCY = 20
 
 
 # ─────────────────────────────────────────────
@@ -62,7 +62,7 @@ async def _run_dns_bruteforce(domain: str) -> list[Subdomain]:
     Fires all wordlist entries concurrently, controlled by
     the semaphore. Returns only the subdomains that resolved.
     """
-    semaphore = asyncio.Semaphore(BATCH_SIZE)
+    semaphore = asyncio.Semaphore(DNS_CONCURRENCY)
     tasks = [
         _resolve_subdomain(word, domain, semaphore)
         for word in WORDLIST
