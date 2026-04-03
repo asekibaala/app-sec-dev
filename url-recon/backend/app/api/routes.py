@@ -7,6 +7,13 @@ from app.storage.scan_store import load_scan, list_scans, save_scan
 from app.models.scan import ScanMeta
 from datetime import datetime
 import uuid
+from fastapi.responses import FileResponse
+from app.reports.generator import (
+    PdfGenerationUnavailableError,
+    get_pdf_generation_status,
+    generate_html_report,
+    generate_pdf_report,
+)
 
 # APIRouter lets us group related endpoints together.
 # The prefix "/api" is applied to every route in this file.
@@ -22,7 +29,15 @@ async def health():
     The frontend and any monitoring tools call this first
     to confirm the API is reachable before doing anything else.
     """
-    return {"status": "ok", "message": "URL Recon API is running"}
+    pdf_reports_available, pdf_reports_error = get_pdf_generation_status()
+    response = {
+        "status": "ok",
+        "message": "URL Recon API is running",
+        "pdf_reports_available": pdf_reports_available,
+    }
+    if pdf_reports_error:
+        response["pdf_reports_error"] = pdf_reports_error
+    return response
 
 
 @router.post("/scan", status_code=202)
@@ -108,7 +123,7 @@ async def get_scan(scan_id: str):
     If the scan is complete, this returns the full result.
     If the scan ID doesn't exist, we return a 404.
 
-    The frontend should poll this endpoint every 2–3 seconds
+    The frontend should poll this endpoint every 2-3 seconds
     until meta.status is 'complete' or 'failed'.
     """
     result = load_scan(scan_id)
@@ -128,3 +143,50 @@ async def get_all_scans():
     view in the frontend without loading gigabytes of data.
     """
     return {"scans": list_scans()}
+
+@router.get("/scan/{scan_id}/report/html")
+async def download_html_report(scan_id: str):
+    """
+    Generates and serves the HTML report for a completed scan.
+    The browser receives it as a downloadable file attachment.
+    Returns 404 if the scan doesn't exist.
+    Returns 400 if the scan hasn't completed yet.
+    """
+    result = load_scan(scan_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Scan not found.")
+    if result.meta.status != "complete":
+        raise HTTPException(status_code=400, detail="Scan not complete yet.")
+
+    path = generate_html_report(result)
+    return FileResponse(
+        path=str(path),
+        media_type="text/html",
+        filename=f"recon-{result.meta.domain}-{scan_id[:8]}.html",
+    )
+
+
+@router.get("/scan/{scan_id}/report/pdf")
+async def download_pdf_report(scan_id: str):
+    """
+    Generates and serves the PDF report for a completed scan.
+    WeasyPrint renders the HTML template to PDF server-side.
+    Returns 404 if the scan doesn't exist.
+    Returns 400 if the scan hasn't completed yet.
+    """
+    result = load_scan(scan_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Scan not found.")
+    if result.meta.status != "complete":
+        raise HTTPException(status_code=400, detail="Scan not complete yet.")
+
+    try:
+        path = generate_pdf_report(result)
+    except PdfGenerationUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    return FileResponse(
+        path=str(path),
+        media_type="application/pdf",
+        filename=f"recon-{result.meta.domain}-{scan_id[:8]}.pdf",
+    )

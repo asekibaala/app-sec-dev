@@ -6,6 +6,7 @@ import WhoisSection from "./components/WhoisSection";
 import DnsSection from "./components/DnsSection";
 import SslSection from "./components/SslSection";
 import HeadersSection from "./components/HeadersSection";
+import ReportDownloads from "./components/ReportDownloads";
 import SubdomainsSection from "./components/SubdomainsSection";
 
 function getInitialTheme() {
@@ -121,6 +122,8 @@ export default function App() {
             Running 5 intelligence modules in parallel...
           </div>
         )}
+
+        <ReportDownloads scanId={result?.meta?.status === "complete" ? result?.meta?.id : null} />
 
         {/* Error state */}
         {error && (

@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Security Report — {{ result.meta.domain }}</title>
+  <style>
+    /* ── Reset and base ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 13px;
+      line-height: 1.6;
+      color: #1a1a1a;
+      background: #fff;
+      padding: 40px;
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    /* ── Header ── */
+    .report-header {
+      border-bottom: 2px solid #1a1a1a;
+      padding-bottom: 20px;
+      margin-bottom: 32px;
+    }
+    .report-header h1 {
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+    }
+    .report-header .meta-row {
+      display: flex;
+      gap: 32px;
+      margin-top: 8px;
+      font-size: 12px;
+      color: #666;
+    }
+
+    /* ── Section ── */
+    .section {
+      margin-bottom: 28px;
+      page-break-inside: avoid;
+    }
+    .section-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: #666;
+      border-bottom: 1px solid #e5e5e5;
+      padding-bottom: 6px;
+      margin-bottom: 14px;
+    }
+
+    /* ── Grid ── */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    .field label {
+      font-size: 11px;
+      color: #999;
+      display: block;
+    }
+    .field p {
+      font-size: 13px;
+      font-weight: 500;
+      color: #1a1a1a;
+    }
+
+    /* ── Badge ── */
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      border: 1px solid transparent;
+    }
+    .badge-PASS  { background: #f0fdf4; color: #166534; border-color: #bbf7d0; }
+    .badge-INFO  { background: #eff6ff; color: #1e40af; border-color: #bfdbfe; }
+    .badge-WARN  { background: #fffbeb; color: #92400e; border-color: #fde68a; }
+    .badge-FAIL  { background: #fef2f2; color: #991b1b; border-color: #fecaca; }
+    .badge-Aplus { background: #f0fdf4; color: #166534; border-color: #bbf7d0; }
+    .badge-A     { background: #f0fdf4; color: #166534; border-color: #bbf7d0; }
+    .badge-B     { background: #fffbeb; color: #92400e; border-color: #fde68a; }
+    .badge-C     { background: #fffbeb; color: #92400e; border-color: #fde68a; }
+    .badge-F     { background: #fef2f2; color: #991b1b; border-color: #fecaca; }
+
+    /* ── Table ── */
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th {
+      text-align: left;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #999;
+      padding: 6px 8px;
+      border-bottom: 1px solid #e5e5e5;
+    }
+    td { padding: 7px 8px; border-bottom: 1px solid #f3f3f3; color: #333; }
+    tr:last-child td { border-bottom: none; }
+
+    /* ── DNS record rows ── */
+    .record-type {
+      font-family: monospace;
+      font-size: 11px;
+      font-weight: 700;
+      color: #2563eb;
+      width: 48px;
+    }
+    .record-value { font-family: monospace; font-size: 11px; color: #374151; }
+
+    /* ── Protocol pill ── */
+    .proto {
+      display: inline-block;
+      padding: 1px 6px;
+      border-radius: 3px;
+      font-size: 10px;
+      font-family: monospace;
+      margin-right: 4px;
+      border: 1px solid;
+    }
+    .proto-strong { background: #f0fdf4; color: #166534; border-color: #bbf7d0; }
+    .proto-weak   { background: #fef2f2; color: #991b1b; border-color: #fecaca; }
+
+    /* ── Footer ── */
+    .report-footer {
+      margin-top: 40px;
+      padding-top: 16px;
+      border-top: 1px solid #e5e5e5;
+      font-size: 11px;
+      color: #aaa;
+      display: flex;
+      justify-content: space-between;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <div class="report-header">
+    <h1>Security Intelligence Report</h1>
+    <div class="meta-row">
+      <span>Domain: <strong>{{ result.meta.domain }}</strong></span>
+      <span>Scan ID: {{ result.meta.id }}</span>
+      <span>Generated: {{ result.meta.completed_at }}</span>
+      <span>Duration: {{ result.meta.duration_ms }}ms</span>
+    </div>
+  </div>
+
+  <!-- SSL / TLS -->
+  {% if result.ssl %}
+  <div class="section">
+    <div class="section-title">SSL / TLS certificate</div>
+    {% if result.ssl.error %}
+      <p style="color:#991b1b">{{ result.ssl.error }}</p>
+    {% else %}
+    <div style="display:flex; align-items:center; gap:12px; margin-bottom:14px;">
+      <span style="font-size:32px; font-weight:700;">{{ result.ssl.grade }}</span>
+      <div>
+        <div>{{ result.ssl.issuer }}</div>
+        <div style="color:#666; font-size:12px;">{{ result.ssl.subject }}</div>
+      </div>
+    </div>
+    <div class="grid-2">
+      <div class="field"><label>Expiry date</label><p>{{ result.ssl.expiry_date }}</p></div>
+      <div class="field"><label>Days remaining</label>
+        <p style="color:{% if result.ssl.expiry_days < 30 %}#991b1b{% else %}#166534{% endif %}">
+          {{ result.ssl.expiry_days }}
+        </p>
+      </div>
+      <div class="field"><label>Self-signed</label><p>{{ "Yes" if result.ssl.self_signed else "No" }}</p></div>
+      <div class="field"><label>Protocols</label>
+        <p>
+          {% for p in result.ssl.protocols %}
+            <span class="proto {% if p in ['TLSv1.2','TLSv1.3'] %}proto-strong{% else %}proto-weak{% endif %}">{{ p }}</span>
+          {% endfor %}
+        </p>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <!-- HTTP Security Headers -->
+  {% if result.headers %}
+  <div class="section">
+    <div class="section-title">HTTP security headers</div>
+    {% if result.headers.error %}
+      <p style="color:#991b1b">{{ result.headers.error }}</p>
+    {% else %}
+    <table>
+      <thead>
+        <tr>
+          <th style="width:40px;">Status</th>
+          <th>Header</th>
+          <th>Message</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for f in result.headers.findings | sort(attribute='status') %}
+        <tr>
+          <td><span class="badge badge-{{ f.status }}">{{ f.status }}</span></td>
+          <td style="font-family:monospace; font-size:11px;">{{ f.header }}</td>
+          <td style="color:#666; font-size:11px;">{{ f.message }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <!-- WHOIS -->
+  {% if result.whois %}
+  <div class="section">
+    <div class="section-title">WHOIS registration</div>
+    {% if result.whois.error %}
+      <p style="color:#991b1b">{{ result.whois.error }}</p>
+    {% else %}
+    <div class="grid-2">
+      <div class="field"><label>Registrar</label><p>{{ result.whois.registrar or "—" }}</p></div>
+      <div class="field"><label>Created</label><p>{{ result.whois.created or "—" }}</p></div>
+      <div class="field"><label>Expires</label><p>{{ result.whois.expires or "—" }}</p></div>
+      <div class="field"><label>Updated</label><p>{{ result.whois.updated or "—" }}</p></div>
+    </div>
+    {% if result.whois.nameservers %}
+    <div style="margin-top:10px;">
+      <label style="font-size:11px;color:#999;">Nameservers</label>
+      <p style="font-family:monospace; font-size:11px; margin-top:4px;">
+        {{ result.whois.nameservers | join(" · ") }}
+      </p>
+    </div>
+    {% endif %}
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <!-- DNS Records -->
+  {% if result.dns %}
+  <div class="section">
+    <div class="section-title">DNS records</div>
+    <table>
+      <thead><tr><th style="width:48px;">Type</th><th>Values</th></tr></thead>
+      <tbody>
+        {% for rtype, values in [
+            ("A",    result.dns.A),
+            ("AAAA", result.dns.AAAA),
+            ("MX",   result.dns.MX),
+            ("NS",   result.dns.NS),
+            ("TXT",  result.dns.TXT),
+        ] %}
+        <tr>
+          <td class="record-type">{{ rtype }}</td>
+          <td>
+            {% if values %}
+              {% for v in values %}
+                <div class="record-value">{{ v }}</div>
+              {% endfor %}
+            {% else %}
+              <span style="color:#ccc;">—</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+        {% if result.dns.SOA %}
+        <tr>
+          <td class="record-type">SOA</td>
+          <td class="record-value">{{ result.dns.SOA }}</td>
+        </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  <!-- Subdomains -->
+  {% if result.subdomains and result.subdomains.total > 0 %}
+  <div class="section">
+    <div class="section-title">Subdomains — {{ result.subdomains.total }} discovered</div>
+    <table>
+      <thead>
+        <tr><th>Subdomain</th><th>IP address</th></tr>
+      </thead>
+      <tbody>
+        {% for s in result.subdomains.subdomains %}
+        <tr>
+          <td style="font-family:monospace; font-size:11px;">{{ s.name }}</td>
+          <td style="font-family:monospace; font-size:11px; color:#666;">{{ s.ip or "—" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  <!-- Footer -->
+  <div class="report-footer">
+    <span>Generated by URL Recon</span>
+    <span>{{ result.meta.domain }} · {{ result.meta.id }}</span>
+  </div>
+
+</body>
+</html>
