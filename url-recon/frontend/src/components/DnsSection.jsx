@@ -7,12 +7,12 @@ import SectionCard from "./SectionCard";
 
 function RecordRow({ type, values }) {
   return (
-    <div className="flex gap-4 py-2 border-b border-gray-100 last:border-0 text-sm">
-      <span className="w-12 font-mono text-xs font-semibold text-blue-700 pt-0.5">{type}</span>
+    <div className="flex gap-4 border-b border-gray-100 py-2 text-sm last:border-0 dark:border-slate-800">
+      <span className="w-12 pt-0.5 font-mono text-xs font-semibold text-blue-700 dark:text-blue-300">{type}</span>
       <div className="flex flex-col gap-0.5">
         {values?.length > 0
-          ? values.map((v) => <span key={v} className="text-gray-800 font-mono text-xs">{v}</span>)
-          : <span className="text-gray-400 text-xs">—</span>
+          ? values.map((v) => <span key={v} className="font-mono text-xs text-gray-800 dark:text-slate-200">{v}</span>)
+          : <span className="text-xs text-gray-400 dark:text-slate-500">—</span>
         }
       </div>
     </div>

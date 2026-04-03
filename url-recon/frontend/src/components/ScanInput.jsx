@@ -23,9 +23,7 @@ export default function ScanInput({ onScan, isScanning }) {
         onChange={(e) => setDomain(e.target.value)}
         placeholder="Enter domain — e.g. example.com or example.com/path"
         disabled={isScanning}
-        className="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg text-sm
-                   focus:outline-none focus:ring-2 focus:ring-blue-500
-                   disabled:bg-gray-50 disabled:text-gray-400"
+        className="flex-1 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500 dark:disabled:bg-slate-800 dark:disabled:text-slate-500"
       />
       <button
         type="submit"

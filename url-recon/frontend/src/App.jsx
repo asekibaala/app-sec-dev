@@ -8,6 +8,15 @@ import SslSection from "./components/SslSection";
 import HeadersSection from "./components/HeadersSection";
 import SubdomainsSection from "./components/SubdomainsSection";
 
+function getInitialTheme() {
+  if (typeof window === "undefined") return "light";
+
+  const storedTheme = window.localStorage.getItem("theme");
+  if (storedTheme === "light" || storedTheme === "dark") return storedTheme;
+
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
 export default function App() {
   // The current scan result — null until a scan completes
   const [result, setResult] = useState(null);
@@ -17,6 +26,7 @@ export default function App() {
   const [error, setError] = useState(null);
   // Past scans for the history sidebar
   const [history, setHistory] = useState([]);
+  const [theme, setTheme] = useState(getInitialTheme);
   // We store the polling interval ref so we can cancel it
   const pollRef = useRef(null);
 
@@ -66,14 +76,33 @@ export default function App() {
   // Clean up the polling interval when the component unmounts
   useEffect(() => () => clearInterval(pollRef.current), []);
 
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", theme === "dark");
+    window.localStorage.setItem("theme", theme);
+  }, [theme]);
+
+  function toggleTheme() {
+    setTheme((currentTheme) => currentTheme === "dark" ? "light" : "dark");
+  }
+
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 text-gray-900 transition-colors dark:bg-slate-950 dark:text-slate-100">
 
       {/* Header */}
-      <header className="bg-white border-b border-gray-200 px-6 py-4">
-        <div className="max-w-5xl mx-auto">
-          <h1 className="text-lg font-semibold text-gray-900">URL Recon</h1>
-          <p className="text-xs text-gray-500 mt-0.5">Domain security intelligence</p>
+      <header className="border-b border-gray-200 bg-white px-6 py-4 dark:border-slate-800 dark:bg-slate-900">
+        <div className="mx-auto flex max-w-5xl items-center justify-between gap-4">
+          <div>
+            <h1 className="text-lg font-semibold text-gray-900 dark:text-slate-100">URL Recon</h1>
+            <p className="mt-0.5 text-xs text-gray-500 dark:text-slate-400">Domain security intelligence</p>
+          </div>
+          <button
+            type="button"
+            onClick={toggleTheme}
+            aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+            className="inline-flex items-center rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+          >
+            {theme === "dark" ? "Light mode" : "Dark mode"}
+          </button>
         </div>
       </header>
 
@@ -86,8 +115,8 @@ export default function App() {
 
         {/* Scanning indicator */}
         {isScanning && (
-          <div className="flex items-center gap-3 mb-6 text-sm text-gray-500">
-            <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent
+          <div className="mb-6 flex items-center gap-3 text-sm text-gray-500 dark:text-slate-400">
+            <div className="h-4 w-4 rounded-full border-2 border-blue-500 border-t-transparent
                             rounded-full animate-spin" />
             Running 5 intelligence modules in parallel...
           </div>
@@ -95,7 +124,7 @@ export default function App() {
 
         {/* Error state */}
         {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+          <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300">
             {error}
           </div>
         )}
@@ -114,15 +143,14 @@ export default function App() {
 
         {/* Scan history */}
         {history.length > 0 && !result && (
-          <div className="bg-white border border-gray-200 rounded-lg p-6">
-            <h2 className="text-base font-semibold text-gray-900 mb-4">Recent scans</h2>
+          <div className="rounded-lg border border-gray-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
+            <h2 className="mb-4 text-base font-semibold text-gray-900 dark:text-slate-100">Recent scans</h2>
             <div className="flex flex-col gap-2">
               {history.map((scan) => (
                 <div key={scan.id}
-                  className="flex items-center justify-between py-2
-                             border-b border-gray-100 last:border-0 text-sm">
-                  <span className="font-medium text-gray-800">{scan.domain}</span>
-                  <span className="text-xs text-gray-400">
+                  className="flex items-center justify-between border-b border-gray-100 py-2 text-sm last:border-0 dark:border-slate-800">
+                  <span className="font-medium text-gray-800 dark:text-slate-200">{scan.domain}</span>
+                  <span className="text-xs text-gray-400 dark:text-slate-500">
                     {new Date(scan.started_at).toLocaleString()}
                   </span>
                 </div>

@@ -19,18 +19,18 @@ export default function HeadersSection({ headers }) {
   return (
     <SectionCard title="HTTP security headers">
       {headers.error
-        ? <p className="text-sm text-red-600">{headers.error}</p>
+        ? <p className="text-sm text-red-600 dark:text-red-300">{headers.error}</p>
         : (
           <div className="flex flex-col gap-2">
             {sorted.map((f) => (
               <div key={f.header} className="flex items-start gap-3 py-2
-                border-b border-gray-100 last:border-0">
+                border-b border-gray-100 last:border-0 dark:border-slate-800">
                 <div className="pt-0.5"><Badge status={f.status} /></div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-mono font-medium text-gray-800">{f.header}</p>
-                  <p className="text-xs text-gray-500 mt-0.5">{f.message}</p>
+                  <p className="text-sm font-mono font-medium text-gray-800 dark:text-slate-100">{f.header}</p>
+                  <p className="mt-0.5 text-xs text-gray-500 dark:text-slate-400">{f.message}</p>
                   {f.value && (
-                    <p className="text-xs font-mono text-gray-400 mt-0.5 truncate">{f.value}</p>
+                    <p className="mt-0.5 truncate text-xs font-mono text-gray-400 dark:text-slate-500">{f.value}</p>
                   )}
                 </div>
               </div>
