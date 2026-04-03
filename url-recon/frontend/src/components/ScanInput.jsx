@@ -6,8 +6,18 @@
  */
 import { useState } from "react";
 
+function preValidate(domain) {
+  if (!domain.trim()) return "Please enter a domain name.";
+  if (domain.includes(" ")) return "Domain cannot contain spaces.";
+  if (/^https?:\/\//i.test(domain)) return null;
+  if (!domain.includes(".")) return "Domain must include a TLD — e.g. example.com";
+  if (domain.length > 253) return "Domain is too long.";
+  return null;
+}
+
 export default function ScanInput({ onScan, isScanning }) {
   const [domain, setDomain] = useState("");
+  const [validationError, setValidationError] = useState(null);
 
   function handleSubmit(e) {
     e.preventDefault();

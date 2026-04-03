@@ -2,14 +2,6 @@ from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
 
-class ScanRequest(BaseModel):
-    """
-    What the frontend sends us.
-    Pydantic will reject the request automatically
-    if 'domain' is missing or not a string.
-    """
-    domain: str
-
 class ScanMeta(BaseModel):
     """
     Attached to every scan. Tracks identity and lifecycle.

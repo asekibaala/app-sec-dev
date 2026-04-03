@@ -1,12 +1,12 @@
 import asyncio
 from fastapi import APIRouter, HTTPException, BackgroundTasks
-from app.models.scan import ScanRequest
 from app.models.result import ScanResult
 from app.services.scanner import run_scan
 from app.storage.scan_store import load_scan, list_scans, save_scan
 from app.models.scan import ScanMeta
 from datetime import datetime
 import uuid
+from app.models.validators import ScanRequest
 from fastapi.responses import FileResponse
 from app.reports.generator import (
     PdfGenerationUnavailableError,
@@ -60,11 +60,9 @@ async def start_scan(
     The frontend uses the returned scan_id to poll
     GET /api/scan/{scan_id} until status is 'complete'.
     """
-    # Sanitise the domain — strip whitespace, remove any
-    # accidental scheme prefix the user might have included
-    domain = request.domain.strip().lower()
-    domain = domain.replace("https://", "").replace("http://", "")
-    domain = domain.split("/")[0]  # Strip any path component
+    # Domain validation and normalisation are handled centrally
+    # by app.models.validators.ScanRequest before this function runs.
+    domain = request.domain
 
     # Generate the scan ID upfront so we can return it immediately
     # The background task will use this same ID when saving results
