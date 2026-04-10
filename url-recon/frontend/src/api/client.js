@@ -13,7 +13,24 @@ export async function startScan(domain) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ domain }),
   });
-  if (!response.ok) throw new Error("Failed to start scan");
+
+  if (!response.ok) {
+    let message = "Failed to start scan";
+
+    try {
+      const data = await response.json();
+      if (typeof data?.detail === "string" && data.detail.trim()) {
+        message = data.detail;
+      } else if (typeof data?.error === "string" && data.error.trim()) {
+        message = data.error;
+      }
+    } catch {
+      // Fall back to the generic message when the response isn't JSON.
+    }
+
+    throw new Error(message);
+  }
+
   return response.json();
 }
 

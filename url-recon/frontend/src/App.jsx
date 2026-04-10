@@ -70,7 +70,7 @@ export default function App() {
 
     } catch (e) {
       setIsScanning(false);
-      setError("Failed to start scan. Is the API running?");
+      setError(e.message || "Failed to start scan. Is the API running?");
     }
   }
 
