@@ -30,10 +30,23 @@ load_dotenv()
 #
 # os.getenv() reads from the .env file. The second argument is a safe
 # fallback for local development — NEVER use the fallback on a real server.
-DATABASE_URL: str = os.getenv(
-    "DATABASE_URL",
-    "postgresql+asyncpg://recon_user:recon_pass@localhost:5432/recon_db",
-)
+DEFAULT_DATABASE_URL = "postgresql+asyncpg://recon_user:recon_pass@localhost:5432/recon_db"
+
+
+def _get_database_url() -> str:
+    """
+    Read DATABASE_URL from the environment and clean up a common copy/paste
+    mistake where the value is saved as `DATABASE_URL=postgresql+asyncpg://...`.
+    """
+    raw_value = os.getenv("DATABASE_URL", DEFAULT_DATABASE_URL).strip()
+
+    if raw_value.startswith("DATABASE_URL="):
+        raw_value = raw_value.split("=", 1)[1].strip()
+
+    return raw_value
+
+
+DATABASE_URL: str = _get_database_url()
 
 # create_async_engine() — opens the door to Postgres.
 #
