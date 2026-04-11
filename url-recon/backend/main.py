@@ -3,6 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.routes import router
+from app.database.engine import engine
+from app.database.models import Base
 
 app = FastAPI(
     title="URL Recon API",
@@ -18,6 +20,27 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.on_event("startup")
+async def on_startup() -> None:
+    """
+    Runs once when the FastAPI server boots up — before any request is handled.
+
+    engine.begin() opens a special connection for DDL (Data Definition Language)
+    commands — the SQL that creates/alters tables rather than reads/writes data.
+
+    conn.run_sync(Base.metadata.create_all) — looks at every class that inherits
+    from Base (our ScanRecord), and creates its table in Postgres IF it doesn't
+    already exist. It never drops or alters an existing table, so this is safe
+    to run every single time the server starts. Old data is never touched.
+
+    Think of it like: "build the shelves if they aren't there yet, otherwise
+    just walk in and get to work."
+    """
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    print("[db] PostgreSQL tables verified / created ✓")
 
 
 @app.exception_handler(Exception)
