@@ -1,10 +1,32 @@
+"""
+routes.py — HTTP endpoints for URL Recon.
+
+Key change from the old version:
+  BEFORE: imported from app.storage.scan_store (JSON files)
+  AFTER:  imports from app.database.db_store   (PostgreSQL)
+
+Session injection pattern:
+  Route handlers that READ from the DB use:
+      db: AsyncSession = Depends(get_db)
+  FastAPI calls get_db(), gets a fresh session, passes it to the route,
+  then closes it automatically when the response is sent.
+
+  Background tasks (the actual scan) CANNOT use the route's session —
+  that session closes the moment the HTTP response is sent back to the
+  frontend, but the background task keeps running for 30+ seconds.
+  So _run_scan_task() creates its OWN fresh session via AsyncSessionLocal.
+"""
+
 from datetime import datetime
 import uuid
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from fastapi.responses import FileResponse
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.limiter import limiter
+from app.database.db_store import delete_scan, list_scans, load_scan, save_scan
+from app.database.engine import AsyncSessionLocal, get_db
 from app.models.result import ScanResult
 from app.models.scan import ScanMeta
 from app.models.validators import ScanRequest
@@ -15,10 +37,11 @@ from app.reports.generator import (
     get_pdf_generation_status,
 )
 from app.services.scanner import run_scan
-from app.storage.scan_store import list_scans, load_scan, save_scan
 
 router = APIRouter(prefix="/api")
 
+
+# ─── Health ──────────────────────────────────────────────────────────────────
 
 @router.get("/health")
 async def health():
@@ -33,11 +56,17 @@ async def health():
     return response
 
 
+# ─── Start a scan ─────────────────────────────────────────────────────────────
+
 @router.post("/scan", status_code=202)
 async def start_scan(
     request: Request,
     body: ScanRequest,
     background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+    # Depends(get_db) tells FastAPI: "before calling this function, run
+    # get_db() and give me the session it yields". FastAPI handles the
+    # entire lifecycle — open, pass in, close — automatically.
 ):
     domain = body.domain
     limiter.enforce_scan_limits(request, domain)
@@ -49,8 +78,15 @@ async def start_scan(
         started_at=datetime.utcnow(),
         status="running",
     )
-    save_scan(ScanResult(meta=meta))
 
+    # Write the initial "running" row to Postgres immediately so the
+    # frontend can start polling before the scan finishes.
+    await save_scan(ScanResult(meta=meta), db)
+
+    # Schedule the actual scan to run AFTER the HTTP response is sent.
+    # BackgroundTasks is FastAPI's built-in task queue for fire-and-forget work.
+    # We pass scan_id and domain as plain values — NOT the db session,
+    # because that session closes when this route function returns.
     background_tasks.add_task(_run_scan_task, scan_id, domain)
 
     return {
@@ -61,21 +97,45 @@ async def start_scan(
     }
 
 
-async def _run_scan_task(scan_id: str, domain: str):
-    try:
-        await run_scan(domain, scan_id=scan_id)
-    except Exception as exc:
-        existing = load_scan(scan_id)
-        if existing:
-            existing.meta.status = "failed"
-            existing.meta.completed_at = datetime.utcnow()
-            save_scan(existing)
-        print(f"[routes] Scan {scan_id} failed: {exc}")
+async def _run_scan_task(scan_id: str, domain: str) -> None:
+    """
+    Runs in the background after the HTTP 202 response is sent.
 
+    Creates its OWN database session because the route's session is
+    already closed by the time this function gets to do serious work.
+
+    `async with AsyncSessionLocal() as session:` — opens a fresh session,
+    runs the scan (which saves progress to Postgres), then closes cleanly.
+    If run_scan() raises, we catch it and mark the scan as failed in the DB.
+    """
+    async with AsyncSessionLocal() as session:
+        try:
+            await run_scan(domain, scan_id=scan_id, db=session)
+        except Exception as exc:
+            # If the scan crashes, update the row to status="failed" so the
+            # frontend stops polling and shows an error state.
+            existing = await load_scan(scan_id, session)
+            if existing:
+                existing.meta.status = "failed"
+                existing.meta.completed_at = datetime.utcnow()
+                await save_scan(existing, session)
+            print(f"[routes] Scan {scan_id} failed: {exc}")
+
+
+# ─── Fetch a single scan ──────────────────────────────────────────────────────
 
 @router.get("/scan/{scan_id}")
-async def get_scan(scan_id: str):
-    result = load_scan(scan_id)
+async def get_scan(
+    scan_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Returns the full ScanResult for one scan ID.
+    The frontend polls this every 2 seconds until status = "complete".
+    load_scan() does a primary-key lookup — O(1), instant regardless of
+    how many scans are stored.
+    """
+    result = await load_scan(scan_id, db)
     if result is None:
         raise HTTPException(
             status_code=404,
@@ -84,14 +144,47 @@ async def get_scan(scan_id: str):
     return result
 
 
-@router.get("/scans")
-async def get_all_scans():
-    return {"scans": list_scans()}
+# ─── List all scans ───────────────────────────────────────────────────────────
 
+@router.get("/scans")
+async def get_all_scans(
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Returns a lightweight list of all scans (meta only, not full results).
+    Used by the frontend's history sidebar.
+    list_scans() returns only the columns needed for the list view —
+    no heavy result_json loaded into memory.
+    """
+    return {"scans": await list_scans(db)}
+
+
+# ─── Delete a scan ────────────────────────────────────────────────────────────
+
+@router.delete("/scan/{scan_id}", status_code=200)
+async def remove_scan(
+    scan_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Deletes a scan from the database by ID.
+    Returns 404 if the scan doesn't exist.
+    This is a new endpoint — the old file-based store had no delete support.
+    """
+    deleted = await delete_scan(scan_id, db)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Scan not found.")
+    return {"message": f"Scan {scan_id} deleted."}
+
+
+# ─── Reports ──────────────────────────────────────────────────────────────────
 
 @router.get("/scan/{scan_id}/report/html")
-async def download_html_report(scan_id: str):
-    result = load_scan(scan_id)
+async def download_html_report(
+    scan_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    result = await load_scan(scan_id, db)
     if result is None:
         raise HTTPException(status_code=404, detail="Scan not found.")
     if result.meta.status != "complete":
@@ -106,8 +199,11 @@ async def download_html_report(scan_id: str):
 
 
 @router.get("/scan/{scan_id}/report/pdf")
-async def download_pdf_report(scan_id: str):
-    result = load_scan(scan_id)
+async def download_pdf_report(
+    scan_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    result = await load_scan(scan_id, db)
     if result is None:
         raise HTTPException(status_code=404, detail="Scan not found.")
     if result.meta.status != "complete":

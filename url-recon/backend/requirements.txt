@@ -1,5 +1,19 @@
 aiofiles==25.1.0
 annotated-doc==0.0.4
+# ── Database ──────────────────────────────────────────────────────────────────
+# sqlalchemy      — ORM + query builder; talks to Postgres using Python classes
+#                   instead of raw SQL strings. One URL swap switches databases.
+# asyncpg         — The async Postgres wire driver. Fastest Python-to-Postgres
+#                   driver available. Required by SQLAlchemy's async engine.
+# greenlet        — Low-level coroutine library SQLAlchemy async needs internally.
+#                   You never call it directly — it runs behind the scenes.
+# python-dotenv   — Reads .env files and loads them into os.environ so
+#                   credentials never have to be hardcoded in source files.
+sqlalchemy==2.0.41
+asyncpg==0.30.0
+greenlet==3.2.1
+python-dotenv==1.1.0
+# ─────────────────────────────────────────────────────────────────────────────
 annotated-types==0.7.0
 anyio==4.12.1
 brotli==1.2.0
