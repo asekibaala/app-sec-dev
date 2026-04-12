@@ -2,11 +2,12 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app.auth.settings import AUTH_PROVIDER_MODE
 from app.api.routes import router
+from app.auth.users import ensure_default_local_admin
+from app.database.engine import AsyncSessionLocal
 from app.database.engine import engine
 from app.database.models import Base
-from app.database.user_store import ensure_default_admin
-from app.database.engine import AsyncSessionLocal
 
 app = FastAPI(
     title="URL Recon API",
@@ -44,11 +45,12 @@ async def on_startup() -> None:
         await conn.run_sync(Base.metadata.create_all)
     print("[db] PostgreSQL tables verified / created ✓")
 
-    # Seed the default admin account after the tables exist. This keeps the
-    # first-run experience simple while still storing the password as a hash.
+    # Seed the default framework-managed admin account after the tables exist.
+    # FastAPI Users hashes the password before it ever reaches the database.
     async with AsyncSessionLocal() as session:
-        await ensure_default_admin(session)
+        await ensure_default_local_admin(session)
     print("[auth] Default admin account verified / created ✓")
+    print(f"[auth] Provider mode: {AUTH_PROVIDER_MODE}")
 
 
 @app.exception_handler(Exception)

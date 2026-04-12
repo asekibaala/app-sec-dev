@@ -1,37 +1,57 @@
+import os
 from pathlib import Path
 import sys
 import unittest
 
+from fastapi.testclient import TestClient
+
+os.environ["BUGBOUNTY_HUT_TESTING"] = "1"
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.security.auth import (
-    create_access_token,
-    hash_password,
-    verify_access_token,
-    verify_password,
-)
+from app.auth.users import make_local_admin_create
+from main import app
 
 
-class PasswordHashingTests(unittest.TestCase):
-    def test_hash_password_creates_non_plaintext_value(self):
-        stored_hash = hash_password("admin")
+class FastAPIUsersAuthTests(unittest.TestCase):
+    def setUp(self):
+        self.client = TestClient(app)
+        self.client.__enter__()
 
-        self.assertNotEqual(stored_hash, "admin")
-        self.assertTrue(stored_hash.startswith("pbkdf2_sha256$"))
+    def tearDown(self):
+        self.client.__exit__(None, None, None)
 
-    def test_verify_password_accepts_correct_password(self):
-        stored_hash = hash_password("admin")
-        self.assertTrue(verify_password("admin", stored_hash))
+    def test_local_admin_create_maps_username_to_framework_email(self):
+        user_create = make_local_admin_create("admin", "admin")
 
-    def test_verify_password_rejects_incorrect_password(self):
-        stored_hash = hash_password("admin")
-        self.assertFalse(verify_password("wrong-password", stored_hash))
+        self.assertEqual(user_create.username, "admin")
+        self.assertEqual(user_create.email, "admin@bugbounty-hut.example.com")
+        self.assertEqual(user_create.password, "admin")
 
+    def test_login_returns_bearer_token_for_default_admin(self):
+        response = self.client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin"},
+        )
 
-class AccessTokenTests(unittest.TestCase):
-    def test_access_token_round_trip_returns_username(self):
-        token = create_access_token("admin")
-        self.assertEqual(verify_access_token(token), "admin")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("access_token", response.json())
+        self.assertEqual(response.json()["token_type"], "bearer")
+
+    def test_auth_me_returns_current_user_after_login(self):
+        login = self.client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin"},
+        )
+        token = login.json()["access_token"]
+
+        me = self.client.get(
+            "/api/auth/me",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        self.assertEqual(me.status_code, 200)
+        self.assertEqual(me.json()["username"], "admin")
 
 
 if __name__ == "__main__":

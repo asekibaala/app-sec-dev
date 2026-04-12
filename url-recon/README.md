@@ -1,85 +1,62 @@
-# URL Recon
+# Bugbounty hut
 
-URL Recon is a two-part reconnaissance application:
+Bugbounty hut is a two-part reconnaissance application:
 
-- A FastAPI backend that authenticates users, launches domain scans, stores results in PostgreSQL, and serves downloadable reports
-- A React + Vite frontend that provides a login page, a scan workspace, and a sidebar for browsing previous scans
+- A FastAPI backend that authenticates users, launches scans, stores results in PostgreSQL, and serves downloadable reports
+- A React + Vite frontend that provides login, scan creation, history, and report access
+
+## Current Authentication Stack
+
+The backend now uses FastAPI Users for local authentication.
+
+- Local auth backend: FastAPI Users + JWT bearer tokens
+- Password hashing: framework-managed via `pwdlib` / Argon2-compatible hashing
+- Protected routes: FastAPI Users current-user dependency
+- Default bootstrap account: `admin` / `admin`
+
+The bootstrap account is for local setup only. Change it before exposing the app to other users.
+
+## Future Active Directory Provision
+
+The auth configuration includes a reserved external identity-provider mode for a future secure Windows Active Directory integration.
+
+- Current mode: `AUTH_PROVIDER_MODE=local`
+- Planned enterprise path: OIDC federation through Entra ID, ADFS, or another OIDC bridge
+- Deliberate design choice: prefer OIDC federation over raw LDAP password binds for stronger policy, MFA, and conditional-access support
+
+Relevant files:
+
+- `backend/app/auth/users.py`
+- `backend/app/auth/schemas.py`
+- `backend/app/auth/settings.py`
 
 ## Current Features
 
-- Login page backed by PostgreSQL users
-- Default seeded admin account
-- Passwords stored as salted PBKDF2 hashes, never in plaintext
-- Signed bearer-token authentication for protected API routes
-- Per-domain scan cooldown: `60` seconds
-- Per-IP scan rate limit: `10` requests per `60` seconds
-- Scan history sidebar for reopening previous scans
-- HTML and PDF report downloads for completed scans
-
-## Default Login
-
-On first backend startup, the app creates a default admin account if it does not already exist:
-
-- Username: `admin`
-- Password: `admin`
-
-This is intended for local development bootstrap only. Change it before exposing the app to other users.
-
-## Architecture
-
-### Backend
-
-- FastAPI application entry point: `backend/main.py`
-- API routes: `backend/app/api/routes.py`
-- PostgreSQL engine/session factory: `backend/app/database/engine.py`
-- Scan persistence: `backend/app/database/db_store.py`
-- User persistence: `backend/app/database/user_store.py`
-- Password hashing and token signing: `backend/app/security/auth.py`
-
-### Frontend
-
-- Main app shell: `frontend/src/App.jsx`
-- API client: `frontend/src/api/client.js`
-- Login screen: `frontend/src/components/LoginPage.jsx`
-- Scan history sidebar: `frontend/src/components/ScanSidebar.jsx`
-
-## Requirements
-
-### Core
-
-- Python 3.12 recommended
-- Node.js 20+ recommended
-- npm
-- PostgreSQL
-
-### Python Dependencies
-
-Backend Python dependencies are pinned in `backend/requirements.txt`.
-
-### Native / OS Dependencies
-
-- WeasyPrint needs native libraries for PDF generation
-- `gobuster` is optional, but improves subdomain discovery on Kali/Parrot systems
-- SecLists wordlists are optional, but required for Gobuster-based discovery
+- Login page and authenticated session bootstrap
+- Named scans with separate scan titles and target domains
+- Scan history sidebar for reopening prior scans
+- Per-domain cooldown: `60` seconds
+- Per-IP rate limit: `10` requests per `60` seconds
+- HTML and PDF reports for completed scans
 
 ## Environment Variables
 
 Create `backend/.env` from `backend/.env.example`.
 
-Required values:
+Required now:
 
 - `DATABASE_URL=postgresql+asyncpg://USER:PASSWORD@HOST:PORT/DATABASE`
-- `APP_AUTH_SECRET=long_random_secret_for_signing_tokens`
+- `APP_AUTH_SECRET=long_random_secret`
+- `AUTH_PROVIDER_MODE=local`
 
-Example:
+Reserved for future external OIDC auth:
 
-```bash
-cp backend/.env.example backend/.env
-```
+- `OIDC_DISCOVERY_URL`
+- `OIDC_CLIENT_ID`
+- `OIDC_CLIENT_SECRET`
+- `OIDC_SCOPES`
 
 ## Backend Setup
-
-From the repo root:
 
 ```bash
 cd backend
@@ -87,17 +64,10 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
-```
-
-Start PostgreSQL and create a database/user that match your `DATABASE_URL`, then start the API:
-
-```bash
 uvicorn main:app --reload --port 8000
 ```
 
-The backend listens on:
-
-- `http://localhost:8000`
+The backend listens on `http://localhost:8000`.
 
 Useful endpoints:
 
@@ -110,17 +80,13 @@ Useful endpoints:
 
 ## Frontend Setup
 
-From the repo root:
-
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
 
-The frontend listens on:
-
-- `http://localhost:5173`
+The frontend expects the backend API at `http://localhost:8000/api`.
 
 ## Development Flow
 
@@ -129,12 +95,4 @@ The frontend listens on:
 3. Start the frontend from `frontend/`.
 4. Open `http://localhost:5173`.
 5. Sign in with `admin` / `admin`.
-6. Launch a scan or reopen an existing one from the sidebar.
-
-## Notes
-
-- The backend seeds the default admin user at startup after ensuring tables exist.
-- Passwords are stored as PBKDF2 hashes in the `users` table.
-- Bearer tokens are signed with `APP_AUTH_SECRET`.
-- `/api/health` is public, but scan and report endpoints require authentication.
-- The frontend API base URL is currently hardcoded to `http://localhost:8000/api` in `frontend/src/api/client.js`.
+6. Create a named scan and review prior scans from the sidebar.

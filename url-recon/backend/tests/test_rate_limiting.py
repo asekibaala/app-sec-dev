@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 import sys
 import unittest
@@ -5,19 +6,26 @@ from unittest.mock import AsyncMock, patch
 
 from fastapi.testclient import TestClient
 
+os.environ["BUGBOUNTY_HUT_TESTING"] = "1"
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.api.limiter import RateLimiter, limiter
-from app.security.auth import create_access_token
 from main import app
 
 
-def auth_headers(client_ip: str = "198.51.100.7") -> dict[str, str]:
+def auth_headers(client: TestClient, client_ip: str = "198.51.100.7") -> dict[str, str]:
     """
-    Build the minimum headers required to hit protected scan routes in tests.
+    Log in through the framework-managed auth endpoint and return headers for
+    protected scan-route tests.
     """
+    login_response = client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": "admin"},
+    )
+    token = login_response.json()["access_token"]
     return {
-        "Authorization": f"Bearer {create_access_token('admin')}",
+        "Authorization": f"Bearer {token}",
         "X-Forwarded-For": client_ip,
     }
 
@@ -57,9 +65,11 @@ class ScanRouteRateLimitingTests(unittest.TestCase):
     def setUp(self):
         limiter.reset()
         self.client = TestClient(app)
+        self.client.__enter__()
 
     def tearDown(self):
         limiter.reset()
+        self.client.__exit__(None, None, None)
 
     @patch("app.api.routes.run_scan", new_callable=AsyncMock)
     @patch("app.api.routes.save_scan", new_callable=AsyncMock)
@@ -67,12 +77,12 @@ class ScanRouteRateLimitingTests(unittest.TestCase):
         first = self.client.post(
             "/api/scan",
             json={"scan_name": "Primary example scan", "domain": "HTTPS://Example.COM/path"},
-            headers=auth_headers(),
+            headers=auth_headers(self.client),
         )
         second = self.client.post(
             "/api/scan",
             json={"scan_name": "Second example scan", "domain": "example.com"},
-            headers=auth_headers(),
+            headers=auth_headers(self.client),
         )
 
         self.assertEqual(first.status_code, 202)
@@ -87,7 +97,7 @@ class ScanRouteRateLimitingTests(unittest.TestCase):
     @patch("app.api.routes.run_scan", new_callable=AsyncMock)
     @patch("app.api.routes.save_scan", new_callable=AsyncMock)
     def test_ip_limit_blocks_eleventh_scan_request(self, mock_save_scan, mock_run_scan):
-        headers = auth_headers()
+        headers = auth_headers(self.client)
 
         for index in range(10):
             response = self.client.post(

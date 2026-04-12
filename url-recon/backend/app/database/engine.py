@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
+from sqlalchemy.pool import NullPool
 
 # load_dotenv() reads the .env file and puts those key=value pairs into
 # the environment so os.getenv() can find them.
@@ -47,6 +48,7 @@ def _get_database_url() -> str:
 
 
 DATABASE_URL: str = _get_database_url()
+TESTING_MODE = os.getenv("BUGBOUNTY_HUT_TESTING", "0") == "1"
 
 # create_async_engine() — opens the door to Postgres.
 #
@@ -62,13 +64,20 @@ DATABASE_URL: str = _get_database_url()
 #   pool_pre_ping=True → before reusing a connection, send a quick "are you
 #                        alive?" ping to Postgres. Prevents "connection dropped"
 #                        errors after the server has been idle for a while.
-engine = create_async_engine(
-    DATABASE_URL,
-    echo=False,
-    pool_size=10,
-    max_overflow=20,
-    pool_pre_ping=True,
-)
+engine_kwargs = {
+    "echo": False,
+}
+
+# The asyncpg pool cannot safely hop between the isolated event loops created
+# by multiple TestClient instances, so tests use a NullPool instead.
+if TESTING_MODE:
+    engine_kwargs["poolclass"] = NullPool
+else:
+    engine_kwargs["pool_size"] = 10
+    engine_kwargs["max_overflow"] = 20
+    engine_kwargs["pool_pre_ping"] = True
+
+engine = create_async_engine(DATABASE_URL, **engine_kwargs)
 
 # async_sessionmaker() — builds a factory that stamps out fresh sessions.
 # A session is your temporary workspace with the database:

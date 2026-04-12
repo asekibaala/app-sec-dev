@@ -175,8 +175,9 @@ export default function App() {
     setAuthError(null);
 
     try {
-      const session = await login(username, password);
-      setUser({ username: session.username });
+      await login(username, password);
+      const currentUser = await getCurrentUser();
+      setUser(currentUser);
 
       const { nextSelectedId } = await refreshHistory();
       if (nextSelectedId) {

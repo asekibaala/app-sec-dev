@@ -6,9 +6,11 @@ create in Postgres. Think of this file like the architect's floor plan —
 the actual building (real table in Postgres) gets constructed from it
 when the app starts up.
 
-We use two tables:
+We use one application table here:
   - `scans` stores one complete domain scan per row
-  - `users` stores login accounts with hashed passwords only
+
+Authentication users live in app.auth.users.AuthUser because FastAPI Users
+owns that table shape.
 """
 
 from datetime import datetime
@@ -86,26 +88,3 @@ class ScanRecord(Base):
             f"<ScanRecord id={self.id!r} domain={self.domain!r} "
             f"status={self.status!r}>"
         )
-
-
-class UserRecord(Base):
-    """
-    Maps directly to the `users` table in PostgreSQL.
-
-    username      → login identifier. We keep this unique so there is never any
-                    ambiguity about which account is being authenticated.
-    password_hash → the PBKDF2 hash produced by app.security.auth.hash_password().
-                    The raw password is never stored in the database.
-    created_at    → UTC timestamp for account bootstrap and audit visibility.
-    """
-
-    __tablename__ = "users"
-
-    id            = Column(Integer, primary_key=True, autoincrement=True)
-    username      = Column(String(64), nullable=False, unique=True, index=True)
-    password_hash = Column(String(512), nullable=False)
-    created_at    = Column(DateTime, nullable=False, default=datetime.utcnow)
-
-    def __repr__(self) -> str:
-        """Friendly string when you print a UserRecord — useful for debugging."""
-        return f"<UserRecord username={self.username!r}>"
