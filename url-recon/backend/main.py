@@ -5,6 +5,8 @@ from fastapi.responses import JSONResponse
 from app.api.routes import router
 from app.database.engine import engine
 from app.database.models import Base
+from app.database.user_store import ensure_default_admin
+from app.database.engine import AsyncSessionLocal
 
 app = FastAPI(
     title="URL Recon API",
@@ -41,6 +43,12 @@ async def on_startup() -> None:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     print("[db] PostgreSQL tables verified / created ✓")
+
+    # Seed the default admin account after the tables exist. This keeps the
+    # first-run experience simple while still storing the password as a hash.
+    async with AsyncSessionLocal() as session:
+        await ensure_default_admin(session)
+    print("[auth] Default admin account verified / created ✓")
 
 
 @app.exception_handler(Exception)

@@ -19,6 +19,8 @@ Why do all functions take a `session` parameter?
   session using `async with AsyncSessionLocal() as session:`.
 """
 
+import json
+
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -124,6 +126,7 @@ async def list_scans(session: AsyncSession) -> list[dict]:
     return [
         {
             "id":           r.id,
+            "scan_name":    _extract_scan_name(r.result_json, r.domain),
             "domain":       r.domain,
             "status":       r.status,
             "started_at":   r.started_at.isoformat()   if r.started_at   else None,
@@ -150,3 +153,18 @@ async def delete_scan(scan_id: str, session: AsyncSession) -> bool:
     await session.delete(record)
     await session.commit()
     return True
+
+
+def _extract_scan_name(result_json: str, domain: str) -> str:
+    """
+    Read the display name from the stored result JSON.
+
+    Older scans created before scan names were introduced will not have this
+    field, so we fall back to the domain to remain backward compatible.
+    """
+    try:
+        payload = json.loads(result_json)
+    except json.JSONDecodeError:
+        return domain
+
+    return payload.get("meta", {}).get("scan_name") or domain

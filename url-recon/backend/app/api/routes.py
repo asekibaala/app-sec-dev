@@ -27,6 +27,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.limiter import limiter
 from app.database.db_store import delete_scan, list_scans, load_scan, save_scan
 from app.database.engine import AsyncSessionLocal, get_db
+from app.database.user_store import get_user_by_username
+from app.models.auth import (
+    AuthenticatedUserResponse,
+    LoginRequest,
+    LoginResponse,
+)
 from app.models.result import ScanResult
 from app.models.scan import ScanMeta
 from app.models.validators import ScanRequest
@@ -35,6 +41,11 @@ from app.reports.generator import (
     generate_html_report,
     generate_pdf_report,
     get_pdf_generation_status,
+)
+from app.security.auth import (
+    create_access_token,
+    require_authenticated_username,
+    verify_password,
 )
 from app.services.scanner import run_scan
 
@@ -56,6 +67,39 @@ async def health():
     return response
 
 
+# ─── Authentication ──────────────────────────────────────────────────────────
+
+@router.post("/auth/login", response_model=LoginResponse)
+async def login(
+    body: LoginRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Authenticate a user against the hashed password stored in PostgreSQL.
+
+    On success we return a signed bearer token that the frontend can store and
+    attach to future requests.
+    """
+    user = await get_user_by_username(body.username, db)
+    if user is None or not verify_password(body.password, user.password_hash):
+        raise HTTPException(status_code=401, detail="Invalid username or password.")
+
+    return LoginResponse(
+        access_token=create_access_token(user.username),
+        username=user.username,
+    )
+
+
+@router.get("/auth/me", response_model=AuthenticatedUserResponse)
+async def get_authenticated_user(
+    username: str = Depends(require_authenticated_username),
+):
+    """
+    Small session bootstrap endpoint used by the frontend on refresh.
+    """
+    return AuthenticatedUserResponse(username=username)
+
+
 # ─── Start a scan ─────────────────────────────────────────────────────────────
 
 @router.post("/scan", status_code=202)
@@ -64,16 +108,23 @@ async def start_scan(
     body: ScanRequest,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
+    username: str = Depends(require_authenticated_username),
     # Depends(get_db) tells FastAPI: "before calling this function, run
     # get_db() and give me the session it yields". FastAPI handles the
     # entire lifecycle — open, pass in, close — automatically.
 ):
+    # Keeping the username dependency here means this route is protected.
+    # We do not currently persist who launched a scan, but the value is ready
+    # for audit logging if that becomes a requirement.
+    _ = username
+    scan_name = body.scan_name
     domain = body.domain
     limiter.enforce_scan_limits(request, domain)
 
     scan_id = str(uuid.uuid4())
     meta = ScanMeta(
         id=scan_id,
+        scan_name=scan_name,
         domain=domain,
         started_at=datetime.utcnow(),
         status="running",
@@ -87,17 +138,18 @@ async def start_scan(
     # BackgroundTasks is FastAPI's built-in task queue for fire-and-forget work.
     # We pass scan_id and domain as plain values — NOT the db session,
     # because that session closes when this route function returns.
-    background_tasks.add_task(_run_scan_task, scan_id, domain)
+    background_tasks.add_task(_run_scan_task, scan_id, scan_name, domain)
 
     return {
         "scan_id": scan_id,
+        "scan_name": scan_name,
         "domain": domain,
         "status": "running",
         "message": f"Scan started. Poll GET /api/scan/{scan_id} for results.",
     }
 
 
-async def _run_scan_task(scan_id: str, domain: str) -> None:
+async def _run_scan_task(scan_id: str, scan_name: str, domain: str) -> None:
     """
     Runs in the background after the HTTP 202 response is sent.
 
@@ -110,7 +162,7 @@ async def _run_scan_task(scan_id: str, domain: str) -> None:
     """
     async with AsyncSessionLocal() as session:
         try:
-            await run_scan(domain, scan_id=scan_id, db=session)
+            await run_scan(domain, scan_name=scan_name, scan_id=scan_id, db=session)
         except Exception as exc:
             # If the scan crashes, update the row to status="failed" so the
             # frontend stops polling and shows an error state.
@@ -128,6 +180,7 @@ async def _run_scan_task(scan_id: str, domain: str) -> None:
 async def get_scan(
     scan_id: str,
     db: AsyncSession = Depends(get_db),
+    username: str = Depends(require_authenticated_username),
 ):
     """
     Returns the full ScanResult for one scan ID.
@@ -135,6 +188,7 @@ async def get_scan(
     load_scan() does a primary-key lookup — O(1), instant regardless of
     how many scans are stored.
     """
+    _ = username
     result = await load_scan(scan_id, db)
     if result is None:
         raise HTTPException(
@@ -149,6 +203,7 @@ async def get_scan(
 @router.get("/scans")
 async def get_all_scans(
     db: AsyncSession = Depends(get_db),
+    username: str = Depends(require_authenticated_username),
 ):
     """
     Returns a lightweight list of all scans (meta only, not full results).
@@ -156,6 +211,7 @@ async def get_all_scans(
     list_scans() returns only the columns needed for the list view —
     no heavy result_json loaded into memory.
     """
+    _ = username
     return {"scans": await list_scans(db)}
 
 
@@ -165,12 +221,14 @@ async def get_all_scans(
 async def remove_scan(
     scan_id: str,
     db: AsyncSession = Depends(get_db),
+    username: str = Depends(require_authenticated_username),
 ):
     """
     Deletes a scan from the database by ID.
     Returns 404 if the scan doesn't exist.
     This is a new endpoint — the old file-based store had no delete support.
     """
+    _ = username
     deleted = await delete_scan(scan_id, db)
     if not deleted:
         raise HTTPException(status_code=404, detail="Scan not found.")
@@ -183,7 +241,9 @@ async def remove_scan(
 async def download_html_report(
     scan_id: str,
     db: AsyncSession = Depends(get_db),
+    username: str = Depends(require_authenticated_username),
 ):
+    _ = username
     result = await load_scan(scan_id, db)
     if result is None:
         raise HTTPException(status_code=404, detail="Scan not found.")
@@ -202,7 +262,9 @@ async def download_html_report(
 async def download_pdf_report(
     scan_id: str,
     db: AsyncSession = Depends(get_db),
+    username: str = Depends(require_authenticated_username),
 ):
+    _ = username
     result = await load_scan(scan_id, db)
     if result is None:
         raise HTTPException(status_code=404, detail="Scan not found.")

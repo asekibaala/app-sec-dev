@@ -31,6 +31,7 @@ from app.services.whois_service import run_whois
 
 async def run_scan(
     domain: str,
+    scan_name: str | None = None,
     scan_id: str | None = None,
     db: AsyncSession | None = None,
 ) -> ScanResult:
@@ -69,6 +70,7 @@ async def run_scan(
 
     meta = ScanMeta(
         id=scan_id,
+        scan_name=scan_name,
         domain=domain,
         started_at=started_at,
         status="running",

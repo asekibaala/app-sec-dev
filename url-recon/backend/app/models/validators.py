@@ -126,7 +126,25 @@ class ScanRequest(BaseModel):
     Replaces the original ScanRequest in scan.py —
     all validation is centralised here.
     """
+    scan_name: str
     domain: str
+
+    @field_validator("scan_name")
+    @classmethod
+    def validate_scan_name(cls, raw: str) -> str:
+        """
+        Require a human-readable scan name so history entries remain easy to
+        distinguish even when multiple scans target the same domain.
+        """
+        scan_name = raw.strip()
+
+        if not scan_name:
+            raise ValueError("Scan name cannot be empty.")
+
+        if len(scan_name) > 80:
+            raise ValueError("Scan name is too long. Maximum is 80 characters.")
+
+        return scan_name
 
     @field_validator("domain")
     @classmethod
